@@ -202,7 +202,14 @@
         .edit-hint .save-status.show { opacity: 1; }
         body.preview-mode [contenteditable="true"] { cursor: default; }
         body.preview-mode [contenteditable="true"]:hover { background: transparent; box-shadow: none; }
-        body.preview-mode .edit-hint { display: none; }
+        body.preview-mode .edit-hint {
+            background: transparent;
+            border-color: transparent;
+            box-shadow: none;
+            justify-content: flex-end;
+        }
+        body.preview-mode .edit-hint .hint-text,
+        body.preview-mode .edit-hint .save-status { display: none; }
     </style>
 </head>
 <body>
@@ -555,11 +562,11 @@
             if (body.classList.contains('preview-mode')) {
                 body.classList.remove('preview-mode');
                 editables.forEach(el => el.setAttribute('contenteditable', 'true'));
-                btn.textContent = '预览模式';
+                btn.textContent = '预览';
             } else {
                 body.classList.add('preview-mode');
                 editables.forEach(el => el.setAttribute('contenteditable', 'false'));
-                btn.textContent = '编辑模式';
+                btn.textContent = '编辑';
             }
         }
 
