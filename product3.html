@@ -106,27 +106,35 @@
             box-shadow: 0 0 0 2px #52c41a;
         }
         .edit-hint {
-            max-width: 1280px;
-            margin: 0 auto 12px auto;
-            padding: 8px 14px;
-            background: #fffbe6;
+            position: fixed;
+            right: 14px;
+            bottom: 14px;
+            z-index: 1000;
+            max-width: 380px;
+            margin: 0;
+            padding: 6px 10px;
+            background: rgba(255, 251, 230, 0.95);
             border: 1px solid #ffe58f;
-            border-radius: 6px;
-            font-size: 12px;
+            border-radius: 4px;
+            font-size: 11px;
             color: #876800;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            backdrop-filter: blur(4px);
         }
-        .edit-hint .actions { display: flex; gap: 8px; }
+        .edit-hint .hint-text { flex: 1; min-width: 0; line-height: 1.4; }
+        .edit-hint .actions { display: flex; gap: 4px; flex-shrink: 0; }
         .edit-hint button {
             background: #52c41a;
             color: #fff;
             border: none;
-            padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
             cursor: pointer;
+            white-space: nowrap;
         }
         .edit-hint button.secondary {
             background: #fff;
@@ -134,21 +142,20 @@
             border: 1px solid #d9d9d9;
         }
         .edit-hint button:hover { opacity: 0.85; }
-        body.preview-mode [contenteditable="true"] { cursor: default; }
-        body.preview-mode [contenteditable="true"]:hover {
-            background: transparent;
-            box-shadow: none;
+        .edit-hint .save-status {
+            font-size: 11px;
+            color: #52c41a;
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
         }
+        .edit-hint .save-status.show { opacity: 1; }
+        body.preview-mode [contenteditable="true"] { cursor: default; }
+        body.preview-mode [contenteditable="true"]:hover { background: transparent; box-shadow: none; }
+        body.preview-mode .edit-hint { display: none; }
     </style>
 </head>
 <body>
-    <div class="edit-hint">
-        <span>✏️ 编辑模式已开启 — 直接点击任意文字即可修改；图表数值/坐标轴文字由 JS 渲染暂不可编辑。</span>
-        <span class="actions">
-            <button onclick="togglePreview()" id="previewBtn">预览模式</button>
-            <button class="secondary" onclick="window.print()">打印 / 导出 PDF</button>
-        </span>
-    </div>
 
     <div class="chart-container">
         <div class="chart-title" contenteditable="true">臻选双重芝士夹心饼干（山姆同款）- 商品孵化套餐打爆趋势图</div>
@@ -478,6 +485,147 @@
                 btn.textContent = '编辑模式';
             }
         }
+    
+        // ===== 自动保存（localStorage）=====
+        const STORAGE_KEY = 'hatch-trend-edits::' + location.pathname;
+        let saveTimer = null;
+
+        function assignAutoIds() {
+            let i = 0;
+            document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+                if (!el.dataset.editId) el.dataset.editId = 'e' + (i++);
+            });
+            let b = 0;
+            document.querySelectorAll('.annotation-box').forEach(box => {
+                if (!box.dataset.boxId) box.dataset.boxId = 'b' + (b++);
+            });
+        }
+
+        function collectState() {
+            const state = { texts: {}, boxes: {}, removed: [] };
+            document.querySelectorAll('[contenteditable="true"][data-edit-id]').forEach(el => {
+                state.texts[el.dataset.editId] = el.innerHTML;
+            });
+            document.querySelectorAll('.annotation-box[data-box-id]').forEach(box => {
+                state.boxes[box.dataset.boxId] = {
+                    left: box.style.left || '',
+                    top: box.style.top || '',
+                    right: box.style.right || '',
+                    bottom: box.style.bottom || '',
+                    background: box.style.background || ''
+                };
+            });
+            state.removed = window.__removedBoxIds || [];
+            return state;
+        }
+
+        function flashSaved() {
+            const s = document.getElementById('saveStatus');
+            if (!s) return;
+            s.classList.add('show');
+            clearTimeout(s._t);
+            s._t = setTimeout(() => s.classList.remove('show'), 1200);
+        }
+
+        function saveNow() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
+                flashSaved();
+            } catch (e) { console.warn('save failed', e); }
+        }
+
+        function scheduleSave() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveNow, 500);
+        }
+
+        function restoreState() {
+            let state;
+            try { state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+            catch (e) { return; }
+            if (state.texts) {
+                for (const id in state.texts) {
+                    const el = document.querySelector('[data-edit-id="' + id + '"]');
+                    if (el) el.innerHTML = state.texts[id];
+                }
+            }
+            if (state.boxes) {
+                for (const id in state.boxes) {
+                    const box = document.querySelector('.annotation-box[data-box-id="' + id + '"]');
+                    if (!box) continue;
+                    const s = state.boxes[id];
+                    if (s.left)       box.style.left = s.left;
+                    if (s.top)        box.style.top = s.top;
+                    if (s.right)      box.style.right = s.right;
+                    if (s.bottom)     box.style.bottom = s.bottom;
+                    if (s.background) box.style.background = s.background;
+                }
+            }
+            if (Array.isArray(state.removed) && state.removed.length) {
+                window.__removedBoxIds = state.removed.slice();
+                state.removed.forEach(id => {
+                    const box = document.querySelector('.annotation-box[data-box-id="' + id + '"]');
+                    if (box) box.remove();
+                });
+            }
+        }
+
+        function resetEdits() {
+            if (!confirm('确定要清除所有本地修改并恢复初始内容？此操作不可撤销。')) return;
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+
+        // 钩子：文字输入触发保存
+        document.addEventListener('input', e => {
+            if (e.target.closest('[contenteditable="true"]')) scheduleSave();
+        });
+
+        // 钩子：拖动结束 / 透明度调节 / 删除框 时保存
+        // 这些操作在原有交互函数中已修改 box.style，我们用 MutationObserver 捕获
+        const styleObserver = new MutationObserver(muts => {
+            let dirty = false;
+            for (const m of muts) {
+                if (m.type === 'attributes' && m.attributeName === 'style' &&
+                    m.target.classList && m.target.classList.contains('annotation-box')) {
+                    dirty = true; break;
+                }
+                if (m.type === 'childList') {
+                    m.removedNodes.forEach(n => {
+                        if (n.nodeType === 1 && n.classList && n.classList.contains('annotation-box') && n.dataset.boxId) {
+                            window.__removedBoxIds = window.__removedBoxIds || [];
+                            if (!window.__removedBoxIds.includes(n.dataset.boxId)) {
+                                window.__removedBoxIds.push(n.dataset.boxId);
+                            }
+                            dirty = true;
+                        }
+                    });
+                }
+            }
+            if (dirty) scheduleSave();
+        });
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            assignAutoIds();
+            restoreState();
+            const annosRoot = document.querySelector('.strategy-annotations');
+            if (annosRoot) {
+                styleObserver.observe(annosRoot, {
+                    attributes: true, subtree: true, attributeFilter: ['style'], childList: true
+                });
+            }
+        });
+
     </script>
+    <div class="edit-hint">
+        <span class="hint-text">✏️ 在线编辑模式 · 改动自动保存到本地浏览器</span>
+        <span class="save-status" id="saveStatus">✓ 已保存</span>
+        <span class="actions">
+            <button onclick="togglePreview()" id="previewBtn">预览</button>
+            <button class="secondary" onclick="resetEdits()" title="清除本地保存恢复初始内容">重置</button>
+            <button class="secondary" onclick="window.print()">打印</button>
+        </span>
+    </div>
 </body>
 </html>
