@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>维他手指柠檬茶 - 商品孵化套餐趋势图</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            padding-left: 8px;
+            border-left: 3px solid #52c41a;
+        }
+        .chart-subtitle {
+            font-size: 12px;
+            color: #888;
+            padding-left: 11px;
+            margin-bottom: 16px;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 580px;
+        }
+        .strategy-annotations {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .annotation-box {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #e8e8e8;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 11px;
+            line-height: 1.5;
+            max-width: 230px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            pointer-events: auto;
+        }
+        .annotation-box .step-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        .annotation-box .strategy-item {
+            margin-bottom: 4px;
+            color: #555;
+        }
+        .annotation-box .strategy-item strong { color: #333; }
+        .annotation-box.step1 { border-left: 3px solid #1890ff; }
+        .annotation-box.step3 { border-left: 3px solid #52c41a; }
+        .annotation-box.step4 { border-left: 3px solid #faad14; }
+        .annotation-box.step5 { border-left: 3px solid #f5222d; }
+        .summary-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: linear-gradient(90deg, #f6ffed 0%, #f0f7ff 100%);
+            border-radius: 6px;
+            border: 1px solid #e8f4d9;
+        }
+        .summary-item { flex: 1; }
+        .summary-item .label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        .summary-item .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        .summary-item .value.green { color: #349814; }
+        .summary-item .value.blue { color: #1478dc; }
+        .summary-item .value.red { color: #f5222d; }
+
+        /* ===== 可编辑模式样式 ===== */
+        [contenteditable="true"] {
+            cursor: text;
+            transition: background 0.15s, box-shadow 0.15s;
+            border-radius: 3px;
+        }
+        [contenteditable="true"]:hover {
+            background: rgba(82, 196, 26, 0.08);
+            box-shadow: 0 0 0 1px rgba(82, 196, 26, 0.3);
+        }
+        [contenteditable="true"]:focus {
+            outline: none;
+            background: rgba(82, 196, 26, 0.12);
+            box-shadow: 0 0 0 2px #52c41a;
+        }
+        .edit-hint {
+            max-width: 1280px;
+            margin: 0 auto 12px auto;
+            padding: 8px 14px;
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #876800;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .edit-hint .actions { display: flex; gap: 8px; }
+        .edit-hint button {
+            background: #52c41a;
+            color: #fff;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .edit-hint button.secondary {
+            background: #fff;
+            color: #555;
+            border: 1px solid #d9d9d9;
+        }
+        .edit-hint button:hover { opacity: 0.85; }
+        body.preview-mode [contenteditable="true"] { cursor: default; }
+        body.preview-mode [contenteditable="true"]:hover {
+            background: transparent;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="edit-hint">
+        <span>✏️ 编辑模式已开启 — 直接点击任意文字即可修改；图表数值/坐标轴文字由 JS 渲染暂不可编辑。</span>
+        <span class="actions">
+            <button onclick="togglePreview()" id="previewBtn">预览模式</button>
+            <button class="secondary" onclick="window.print()">打印 / 导出 PDF</button>
+        </span>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title" contenteditable="true">维他手指柠檬茶 250ml*6 - 商品孵化套餐打爆趋势图</div>
+        <div class="chart-subtitle" contenteditable="true">类目：饮品-即饮茶 ｜ 数据周期：2026-05-15 至 2026-05-25 ｜ 5/21 报入孵化套餐</div>
+
+        <div class="summary-bar">
+            <div class="summary-item">
+                <div class="label" contenteditable="true">报入前均值（5/15-5/20，6天）</div>
+                <div class="value" contenteditable="true">¥60 / 4单</div>
+            </div>
+            <div class="summary-item">
+                <div class="label" contenteditable="true">报入次日（5/22 真正破冰）</div>
+                <div class="value green" contenteditable="true">¥5,473 / 422单</div>
+            </div>
+            <div class="summary-item">
+                <div class="label" contenteditable="true">报入后均值（5/21-5/25，5天）</div>
+                <div class="value blue" contenteditable="true">¥6,146 / 471单</div>
+            </div>
+            <div class="summary-item">
+                <div class="label" contenteditable="true">前后对比增幅</div>
+                <div class="value red" contenteditable="true">GMV +10,143% ｜ 单量 +13,357%</div>
+            </div>
+        </div>
+
+        <div class="chart-wrapper">
+            <canvas id="trendChart"></canvas>
+            <div class="strategy-annotations">
+                <!-- STEP1&STEP2 - 报入前基线 -->
+                <div class="annotation-box step1" style="left: 1%; top: 5%;" contenteditable="true">
+                    <div class="step-title">STEP1&STEP2（5/15–5/20 基线期）</div>
+                    <div class="strategy-item" style="color:#1478dc;font-weight:600;">基线均值 ¥60 / 4单 / 转化率 13%</div>
+                    <div class="strategy-item"><strong>① 链接武装</strong>-标题/主图/卖点调优</div>
+                    <div class="strategy-item"><strong>② 完成精选入池</strong>-价格力维护</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;color:#888;">
+                        日均曝光 2,842 PV, 5/15无成交
+                    </div>
+                </div>
+
+                <!-- STEP3 - 5/21 报入孵化套餐当日 -->
+                <div class="annotation-box step3" style="left: 39%; top: 12%;" contenteditable="true">
+                    <div class="step-title">STEP3（5/21 报入孵化套餐首日）</div>
+                    <div class="strategy-item" style="color:#349814;font-weight:600;">订单 11单 / GMV ¥187 / cvr 17%</div>
+                    <div class="strategy-item"><strong>① 资源位挂载完成</strong>-曝光 5,376 PV(+89%)</div>
+                    <div class="strategy-item"><strong>② 投放起量</strong>-效果广告 ¥153</div>
+                    <div class="strategy-item"><strong>③ 淘客启动</strong>-¥51 / 主搜 ¥34</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;">
+                        当日蓄力期, D+1即爆发
+                    </div>
+                </div>
+
+                <!-- STEP4 - 5/22 真正爆发 -->
+                <div class="annotation-box step4" style="left: 55%; top: 5%;" contenteditable="true">
+                    <div class="step-title">STEP4（5/22 D+1 流量爆发）</div>
+                    <div class="strategy-item" style="color:#faad14;font-weight:600;">GMV ¥5,473 / 422单 / 跳涨29倍</div>
+                    <div class="strategy-item"><strong>① 淘客主推</strong>-¥2,098(38%) / cvr 40%</div>
+                    <div class="strategy-item"><strong>② 直播配合</strong>-¥658(12%)</div>
+                    <div class="strategy-item"><strong>③ 效果广告</strong>-¥289(5%)</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;">
+                        渠道贡献: 淘客 38% / 直播 12% / 效果广告 5%
+                    </div>
+                </div>
+
+                <!-- STEP5 - 5/25 多渠道协同峰值 -->
+                <div class="annotation-box step5" style="left: 80%; top: 55%;" contenteditable="true">
+                    <div class="step-title">STEP5（5/25 淘客出爆峰值）</div>
+                    <div class="strategy-item" style="color:#f5222d;font-weight:600;">GMV ¥9,258 / 709单</div>
+                    <div class="strategy-item"><strong>① 淘客</strong>-¥3,782(41%)</div>
+                    <div class="strategy-item"><strong>② 直播</strong>-¥1,005(11%)</div>
+                    <div class="strategy-item"><strong>③ 效果广告</strong>-¥595(6%)</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;">
+                        曝光峰值: 181,187 PV / 转化率 41.6%
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 真实数据 - 来自商品2.xlsx
+        const dates = ['5/15','5/16','5/17','5/18','5/19','5/20','5/21','5/22','5/23','5/24','5/25'];
+        const orders = [0, 1, 5, 4, 8, 3, 11, 422, 590, 621, 709];
+        const revenue = [0, 17, 91, 68, 135, 51, 187, 5473, 7733, 8077, 9258];
+        const exposurePV = [509, 1900, 3584, 4046, 3638, 3374, 5376, 98819, 118727, 145388, 181187];
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+
+        const gradientOrder = ctx.createLinearGradient(0, 0, 0, 480);
+        gradientOrder.addColorStop(0, 'rgba(82, 196, 26, 0.35)');
+        gradientOrder.addColorStop(1, 'rgba(82, 196, 26, 0.02)');
+
+        const gradientRevenue = ctx.createLinearGradient(0, 0, 0, 480);
+        gradientRevenue.addColorStop(0, 'rgba(24, 144, 255, 0.3)');
+        gradientRevenue.addColorStop(1, 'rgba(24, 144, 255, 0.02)');
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [
+                    {
+                        label: '订单量(单)',
+                        data: orders,
+                        borderColor: '#349814',
+                        backgroundColor: gradientOrder,
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#349814',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '成交规模(元)',
+                        data: revenue,
+                        borderColor: '#1478dc',
+                        backgroundColor: gradientRevenue,
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#1478dc',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y1'
+                    },
+                    {
+                        label: '曝光PV',
+                        data: exposurePV,
+                        borderColor: '#faad14',
+                        backgroundColor: 'rgba(250, 173, 20, 0.0)',
+                        borderWidth: 2,
+                        borderDash: [5, 3],
+                        tension: 0.4,
+                        fill: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#faad14',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y2'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        align: 'start',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded',
+                            padding: 20,
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(255, 255, 255, 0.97)',
+                        titleColor: '#333',
+                        bodyColor: '#666',
+                        borderColor: '#e8e8e8',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
+                        boxPadding: 6,
+                        callbacks: {
+                            title: function(items) { return '日期：' + items[0].label; },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.dataset.label === '成交规模(元)') {
+                                    label += '¥' + Math.round(context.parsed.y).toLocaleString();
+                                } else if (context.dataset.label === '曝光PV') {
+                                    label += Math.round(context.parsed.y).toLocaleString() + ' PV';
+                                } else {
+                                    label += Math.round(context.parsed.y) + '单';
+                                }
+                                return label;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            // 5/21 报入孵化套餐 - 关键节点垂直线
+                            reportLine: {
+                                type: 'line',
+                                xMin: '5/21',
+                                xMax: '5/21',
+                                borderColor: '#f5222d',
+                                borderWidth: 2.5,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: '🚀 5/21 报入孵化套餐',
+                                    position: 'start',
+                                    backgroundColor: 'rgba(245, 34, 45, 0.95)',
+                                    color: '#fff',
+                                    font: { size: 12, weight: 'bold' },
+                                    padding: { top: 5, bottom: 5, left: 10, right: 10 },
+                                    borderRadius: 4,
+                                    yAdjust: 8
+                                }
+                            },
+                            // 报入前 - 基线培育期
+                            baselinePhase: {
+                                type: 'box',
+                                xMin: 0,
+                                xMax: 6,
+                                backgroundColor: 'rgba(150, 150, 150, 0.06)',
+                                borderWidth: 0,
+                                label: {
+                                    display: true,
+                                    content: '报入前基线（5/15-5/20）',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#888',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            },
+                            // 报入后冷启爆发期
+                            burstPhase: {
+                                type: 'box',
+                                xMin: 6,
+                                xMax: 8,
+                                backgroundColor: 'rgba(82, 196, 26, 0.07)',
+                                borderWidth: 0,
+                                label: {
+                                    display: true,
+                                    content: '报入后冷启爆发期',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#52c41a',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            },
+                            // 稳定放量期
+                            stablePhase: {
+                                type: 'box',
+                                xMin: 8,
+                                xMax: 10,
+                                backgroundColor: 'rgba(245, 34, 45, 0.04)',
+                                borderWidth: 0,
+                                label: {
+                                    display: true,
+                                    content: '稳定放量期',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#f5222d',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(0, 0, 0, 0.06)', drawBorder: false },
+                        ticks: { color: '#666', font: { size: 11 }, maxTicksLimit: 20 }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: '订单量(单)', color: '#349814', font: { size: 12 } },
+                        grid: { color: 'rgba(0, 0, 0, 0.06)', drawBorder: false },
+                        ticks: {
+                            color: '#349814',
+                            font: { size: 11 },
+                            callback: function(value) { return Math.round(value) + '单'; }
+                        },
+                        beginAtZero: true
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: '成交规模(元)', color: '#1478dc', font: { size: 12 } },
+                        grid: { drawOnChartArea: false },
+                        ticks: {
+                            color: '#1478dc',
+                            font: { size: 11 },
+                            callback: function(value) { return '¥' + Math.round(value).toLocaleString(); }
+                        },
+                        beginAtZero: true
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: '曝光PV', color: '#faad14', font: { size: 12 } },
+                        grid: { drawOnChartArea: false },
+                        ticks: {
+                            color: '#faad14',
+                            font: { size: 11 },
+                            callback: function(value) {
+                                if (value >= 10000) return (value / 10000).toFixed(1) + '万';
+                                return value;
+                            }
+                        },
+                        beginAtZero: true,
+                        suggestedMax: 220000,
+                        max: 220000,
+                        offset: true
+                    }
+                }
+            }
+        });
+
+        // ===== 预览/编辑模式切换 =====
+        function togglePreview() {
+            const body = document.body;
+            const btn = document.getElementById('previewBtn');
+            const editables = document.querySelectorAll('[contenteditable]');
+            if (body.classList.contains('preview-mode')) {
+                body.classList.remove('preview-mode');
+                editables.forEach(el => el.setAttribute('contenteditable', 'true'));
+                btn.textContent = '预览模式';
+            } else {
+                body.classList.add('preview-mode');
+                editables.forEach(el => el.setAttribute('contenteditable', 'false'));
+                btn.textContent = '编辑模式';
+            }
+        }
+    </script>
+</body>
+</html>

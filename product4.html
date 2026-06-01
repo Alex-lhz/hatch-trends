@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新养道无乳糖牛奶 - 商品孵化套餐趋势图</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            padding-left: 8px;
+            border-left: 3px solid #52c41a;
+        }
+        .chart-subtitle {
+            font-size: 12px;
+            color: #888;
+            padding-left: 11px;
+            margin-bottom: 16px;
+        }
+        .chart-wrapper { position: relative; height: 580px; }
+        .strategy-annotations {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+        .annotation-box {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #e8e8e8;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 11px;
+            line-height: 1.5;
+            max-width: 230px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            pointer-events: auto;
+            user-select: text;
+        }
+        .annotation-box.dragging {
+            opacity: 0.85;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+            cursor: grabbing !important;
+            z-index: 999;
+        }
+        .annotation-box .box-toolbar {
+            position: absolute;
+            top: 4px;
+            right: 6px;
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .annotation-box .drag-handle,
+        .annotation-box .opacity-btn {
+            width: 22px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            border-radius: 3px;
+            transition: background 0.15s, color 0.15s;
+            user-select: none;
+        }
+        .annotation-box .drag-handle {
+            color: #bbb;
+            cursor: grab;
+        }
+        .annotation-box .drag-handle:hover {
+            background: rgba(82, 196, 26, 0.12);
+            color: #52c41a;
+        }
+        .annotation-box .drag-handle:active { cursor: grabbing; }
+        .annotation-box .opacity-btn {
+            color: #bbb;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .annotation-box .opacity-btn:hover,
+        .annotation-box .opacity-btn.active {
+            background: rgba(24, 144, 255, 0.12);
+            color: #1890ff;
+        }
+        .annotation-box .opacity-popup {
+            position: absolute;
+            top: 26px;
+            right: 4px;
+            background: #fff;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            padding: 6px 8px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+            display: none;
+            align-items: center;
+            gap: 6px;
+            z-index: 1001;
+            font-size: 11px;
+            color: #555;
+            white-space: nowrap;
+        }
+        .annotation-box .opacity-popup.show { display: flex; }
+        .annotation-box .opacity-popup input[type="range"] {
+            width: 100px;
+            cursor: pointer;
+        }
+        .annotation-box .opacity-popup .opacity-val { width: 32px; text-align: right; color: #1890ff; font-weight: 600; }
+        body.preview-mode .annotation-box .box-toolbar { display: none; }
+        .annotation-box .step-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        .annotation-box .strategy-item { margin-bottom: 4px; color: #555; }
+        .annotation-box .strategy-item strong { color: #333; }
+        .annotation-box.step1 { border-left: 3px solid #1890ff; }
+        .annotation-box.step3 { border-left: 3px solid #52c41a; }
+        .annotation-box.step4 { border-left: 3px solid #faad14; }
+        .annotation-box.step5 { border-left: 3px solid #f5222d; }
+        .summary-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: linear-gradient(90deg, #f6ffed 0%, #f0f7ff 100%);
+            border-radius: 6px;
+            border: 1px solid #e8f4d9;
+        }
+        .summary-item { flex: 1; }
+        .summary-item .label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        .summary-item .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        .summary-item .value.green { color: #349814; }
+        .summary-item .value.blue { color: #1478dc; }
+        .summary-item .value.red { color: #f5222d; }
+
+        /* ===== 可编辑模式样式 ===== */
+        [contenteditable="true"] {
+            cursor: text;
+            transition: background 0.15s, box-shadow 0.15s;
+            border-radius: 3px;
+        }
+        [contenteditable="true"]:hover {
+            background: rgba(82, 196, 26, 0.08);
+            box-shadow: 0 0 0 1px rgba(82, 196, 26, 0.3);
+        }
+        [contenteditable="true"]:focus {
+            outline: none;
+            background: rgba(82, 196, 26, 0.12);
+            box-shadow: 0 0 0 2px #52c41a;
+        }
+        .edit-hint {
+            max-width: 1280px;
+            margin: 0 auto 12px auto;
+            padding: 8px 14px;
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #876800;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .edit-hint .actions { display: flex; gap: 8px; }
+        .edit-hint button {
+            background: #52c41a;
+            color: #fff;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .edit-hint button.secondary {
+            background: #fff;
+            color: #555;
+            border: 1px solid #d9d9d9;
+        }
+        .edit-hint button:hover { opacity: 0.85; }
+        body.preview-mode [contenteditable="true"] { cursor: default; }
+        body.preview-mode [contenteditable="true"]:hover {
+            background: transparent;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="edit-hint">
+        <span>✏️ 编辑模式已开启 — 点击文字直接修改；方框右上角「⋮⋮」可拖动位置，「◐」可调节透明度；图表数值/坐标轴由 JS 渲染暂不可编辑。</span>
+        <span class="actions">
+            <button onclick="togglePreview()" id="previewBtn">预览模式</button>
+            <button class="secondary" onclick="window.print()">打印 / 导出 PDF</button>
+        </span>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title" contenteditable="true">新养道无乳糖牛奶 200ml×24 - 商品孵化套餐打爆趋势图</div>
+        <div class="chart-subtitle" contenteditable="true">类目：乳品-常温奶 ｜ 数据周期：2026-05-06 至 2026-05-25 ｜ 5/7 报入孵化套餐</div>
+
+        <div class="summary-bar">
+            <div class="summary-item">
+                <div class="label" contenteditable="true">报入当日（5/7）</div>
+                <div class="value" contenteditable="true">¥534 / 10单</div>
+            </div>
+            <div class="summary-item">
+                <div class="label" contenteditable="true">第1周均值（5/7-5/13，冷启）</div>
+                <div class="value green" contenteditable="true">¥1,833 / 35单</div>
+            </div>
+            <div class="summary-item">
+                <div class="label" contenteditable="true">第3周均值（5/21-5/25，放量）</div>
+                <div class="value blue" contenteditable="true">¥10,345 / 198单</div>
+            </div>
+            <div class="summary-item">
+                <div class="label" contenteditable="true">W3 vs W1 增幅</div>
+                <div class="value red" contenteditable="true">GMV +464% ｜ 单量 +466%</div>
+            </div>
+        </div>
+
+        <div class="chart-wrapper">
+            <canvas id="trendChart"></canvas>
+            <div class="strategy-annotations">
+                <!-- STEP1&STEP2 - 报入前 / 上线首日 -->
+                <div class="annotation-box step1" style="left: 1%; top: 5%;">
+                    <span class="box-toolbar">
+                        <span class="opacity-btn" title="调节透明度">◐</span>
+                        <span class="drag-handle" title="拖动">⋮⋮</span>
+                    </span>
+                    <span class="opacity-popup">
+                        透明度
+                        <input type="range" min="20" max="100" value="96">
+                        <span class="opacity-val">96%</span>
+                    </span>
+                    <div contenteditable="true">
+                    <div class="step-title">STEP1&STEP2（5/6 上线首日）</div>
+                    <div class="strategy-item" style="color:#1478dc;font-weight:600;">仅曝光 2,880 PV，无成交</div>
+                    <div class="strategy-item"><strong>① 链接武装</strong>-标题/主图/卖点准备</div>
+                    <div class="strategy-item"><strong>② 投资托管&价格力维护</strong></div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;color:#888;">
+                        新品上架，资源位等待报入即可放量
+                    </div>
+                    </div>
+                </div>
+
+                <!-- STEP3 - 5/7 报入孵化套餐当日 -->
+                <div class="annotation-box step3" style="left: 24%; top: 8%;">
+                    <span class="box-toolbar">
+                        <span class="opacity-btn" title="调节透明度">◐</span>
+                        <span class="drag-handle" title="拖动">⋮⋮</span>
+                    </span>
+                    <span class="opacity-popup">
+                        透明度
+                        <input type="range" min="20" max="100" value="96">
+                        <span class="opacity-val">96%</span>
+                    </span>
+                    <div contenteditable="true">
+                    <div class="step-title">STEP3（5/7 报入孵化套餐当日）</div>
+                    <div class="strategy-item" style="color:#349814;font-weight:600;">订单 10 单 / GMV ¥534（首日破0）</div>
+                    <div class="strategy-item"><strong>① 新品冷启</strong>-1分疯抢&评价有礼</div>
+                    <div class="strategy-item"><strong>② 投流提速</strong>-效果广告 ¥701</div>
+                    <div class="strategy-item"><strong>③ 私域加权</strong>-淘客/直播/聚划算齐启</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;">
+                        <strong>当日特征：</strong>曝光 6,697 PV，转化率 24%
+                    </div>
+                    </div>
+                </div>
+
+                <!-- STEP4 - 第2周加速 -->
+                <div class="annotation-box step4" style="left: 50%; top: 5%;">
+                    <span class="box-toolbar">
+                        <span class="opacity-btn" title="调节透明度">◐</span>
+                        <span class="drag-handle" title="拖动">⋮⋮</span>
+                    </span>
+                    <span class="opacity-popup">
+                        透明度
+                        <input type="range" min="20" max="100" value="96">
+                        <span class="opacity-val">96%</span>
+                    </span>
+                    <div contenteditable="true">
+                    <div class="step-title">STEP4（5/14-5/20 加速周）</div>
+                    <div class="strategy-item" style="color:#faad14;font-weight:600;">GMV 均值 ¥4,126 / 79单（+125%）</div>
+                    <div class="strategy-item"><strong>① 私域孵化</strong>-搜推1档加权&换购助推</div>
+                    <div class="strategy-item"><strong>② 投流托管</strong>-S1+链接激励&聚单加权</div>
+                    <div class="strategy-item"><strong>③ 招商托管</strong>-淘客佣服&聚划算放量</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;">
+                        <strong>渠道贡献：</strong>淘客 35% / 主搜 30% / 效果广告 25%
+                    </div>
+                    </div>
+                </div>
+
+                <!-- STEP5 - 5/24 多渠道协同峰值 -->
+                <div class="annotation-box step5" style="left: 78%; top: 55%;">
+                    <span class="box-toolbar">
+                        <span class="opacity-btn" title="调节透明度">◐</span>
+                        <span class="drag-handle" title="拖动">⋮⋮</span>
+                    </span>
+                    <span class="opacity-popup">
+                        透明度
+                        <input type="range" min="20" max="100" value="96">
+                        <span class="opacity-val">96%</span>
+                    </span>
+                    <div contenteditable="true">
+                    <div class="step-title">STEP5（5/24 多渠道协同峰值）</div>
+                    <div class="strategy-item" style="color:#f5222d;font-weight:600;">GMV ¥12,580 / 241单</div>
+                    <div class="strategy-item"><strong>① 淘客出爆</strong>-佣金膨胀&淘礼金 ¥4,840（38%）</div>
+                    <div class="strategy-item"><strong>② 主搜兜底</strong>-¥4,812（38%）</div>
+                    <div class="strategy-item"><strong>③ 超补放量</strong>-超补栏目 ¥2,702（22%）</div>
+                    <div class="strategy-item"><strong>④ 直播&广告</strong>-直播 ¥1,462 + 广告 ¥2,636</div>
+                    <div class="strategy-item" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px;">
+                        <strong>曝光峰值：</strong>120,322 PV / 转化率 22.2%
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 真实数据 - 来自商品4.xlsx，前置 5/3-5/5 数据点设为 0（曲线从 0 起步）
+        const dates = ['5/3','5/4','5/5','5/6','5/7','5/8','5/9','5/10','5/11','5/12','5/13','5/14','5/15','5/16','5/17','5/18','5/19','5/20','5/21','5/22','5/23','5/24','5/25'];
+        const orders =     [0,    0,    0,    0,    10,   24,   22,   40,   42,   58,   50,   51,   43,   47,   76,   128,  47,   162,  176,  166,  191,  241,  218];
+        const revenue =    [0,    0,    0,    0,    534,  1251, 1146, 2083, 2184, 3026, 2610, 2657, 2241, 2453, 3967, 6676, 2451, 8435, 9174, 8650, 9962, 12580, 11360];
+        const exposurePV = [0,    0,    0,    2880, 6697, 10772,17019,18421,27867,37620,56036,64568,63107,70215,72395,86054,45514,76813,86557,79284,81428,120322,94951];
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+
+        const gradientOrder = ctx.createLinearGradient(0, 0, 0, 480);
+        gradientOrder.addColorStop(0, 'rgba(82, 196, 26, 0.35)');
+        gradientOrder.addColorStop(1, 'rgba(82, 196, 26, 0.02)');
+
+        const gradientRevenue = ctx.createLinearGradient(0, 0, 0, 480);
+        gradientRevenue.addColorStop(0, 'rgba(24, 144, 255, 0.3)');
+        gradientRevenue.addColorStop(1, 'rgba(24, 144, 255, 0.02)');
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [
+                    {
+                        label: '订单量(单)',
+                        data: orders,
+                        borderColor: '#349814',
+                        backgroundColor: gradientOrder,
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        spanGaps: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#349814',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '成交规模(元)',
+                        data: revenue,
+                        borderColor: '#1478dc',
+                        backgroundColor: gradientRevenue,
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        spanGaps: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#1478dc',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y1'
+                    },
+                    {
+                        label: '曝光PV',
+                        data: exposurePV,
+                        borderColor: '#faad14',
+                        backgroundColor: 'rgba(250, 173, 20, 0.0)',
+                        borderWidth: 2,
+                        borderDash: [5, 3],
+                        tension: 0.4,
+                        fill: false,
+                        spanGaps: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#faad14',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1,
+                        pointHoverRadius: 6,
+                        yAxisID: 'y2'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        align: 'start',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded',
+                            padding: 20,
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(255, 255, 255, 0.97)',
+                        titleColor: '#333',
+                        bodyColor: '#666',
+                        borderColor: '#e8e8e8',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
+                        boxPadding: 6,
+                        callbacks: {
+                            title: function(items) { return '日期：' + items[0].label; },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (context.parsed.y === null) return null;
+                                if (label) label += ': ';
+                                if (context.dataset.label === '成交规模(元)') {
+                                    label += '¥' + Math.round(context.parsed.y).toLocaleString();
+                                } else if (context.dataset.label === '曝光PV') {
+                                    label += Math.round(context.parsed.y).toLocaleString() + ' PV';
+                                } else {
+                                    label += Math.round(context.parsed.y) + '单';
+                                }
+                                return label;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            // 5/7 报入孵化套餐
+                            reportLine: {
+                                type: 'line',
+                                xMin: '5/7',
+                                xMax: '5/7',
+                                borderColor: '#f5222d',
+                                borderWidth: 2.5,
+                                borderDash: [6, 4],
+                                label: {
+                                    display: true,
+                                    content: '🚀 5/7 报入孵化套餐',
+                                    position: 'start',
+                                    backgroundColor: 'rgba(245, 34, 45, 0.95)',
+                                    color: '#fff',
+                                    font: { size: 12, weight: 'bold' },
+                                    padding: { top: 5, bottom: 5, left: 10, right: 10 },
+                                    borderRadius: 4,
+                                    yAdjust: 8
+                                }
+                            },
+                            // 5/3-5/5 起步零点区
+                            paddingPhase: {
+                                type: 'box',
+                                xMin: 0,
+                                xMax: 3,
+                                backgroundColor: 'rgba(220, 220, 220, 0.10)',
+                                borderWidth: 0,
+                                label: {
+                                    display: false,
+                                    content: '',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#bbb',
+                                    font: { size: 10 },
+                                    yAdjust: -5
+                                }
+                            },
+                            // 5/6 上线首日
+                            launchPhase: {
+                                type: 'box',
+                                xMin: 3,
+                                xMax: 4,
+                                backgroundColor: 'rgba(150, 150, 150, 0.06)',
+                                borderWidth: 0,
+                                label: {
+                                    display: false,
+                                    content: '',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#888',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            },
+                            // W1 冷启
+                            week1Phase: {
+                                type: 'box',
+                                xMin: 4,
+                                xMax: 11,
+                                backgroundColor: 'rgba(82, 196, 26, 0.07)',
+                                borderWidth: 0,
+                                label: {
+                                    display: true,
+                                    content: 'W1 冷启周',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#52c41a',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            },
+                            // W2 加速
+                            week2Phase: {
+                                type: 'box',
+                                xMin: 11,
+                                xMax: 18,
+                                backgroundColor: 'rgba(250, 173, 20, 0.06)',
+                                borderWidth: 0,
+                                label: {
+                                    display: true,
+                                    content: 'W2 加速周',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#faad14',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            },
+                            // W3 放量
+                            week3Phase: {
+                                type: 'box',
+                                xMin: 18,
+                                xMax: 22,
+                                backgroundColor: 'rgba(245, 34, 45, 0.05)',
+                                borderWidth: 0,
+                                label: {
+                                    display: true,
+                                    content: 'W3 稳定放量',
+                                    position: { x: 'center', y: 'end' },
+                                    backgroundColor: 'rgba(255,255,255,0)',
+                                    color: '#f5222d',
+                                    font: { size: 10, weight: 'bold' },
+                                    yAdjust: -5
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(0, 0, 0, 0.06)', drawBorder: false },
+                        ticks: { color: '#666', font: { size: 11 }, maxTicksLimit: 23 }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: '订单量(单)', color: '#349814', font: { size: 12 } },
+                        grid: { color: 'rgba(0, 0, 0, 0.06)', drawBorder: false },
+                        ticks: {
+                            color: '#349814',
+                            font: { size: 11 },
+                            callback: function(value) { return Math.round(value) + '单'; }
+                        },
+                        beginAtZero: true
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: '成交规模(元)', color: '#1478dc', font: { size: 12 } },
+                        grid: { drawOnChartArea: false },
+                        ticks: {
+                            color: '#1478dc',
+                            font: { size: 11 },
+                            callback: function(value) { return '¥' + Math.round(value).toLocaleString(); }
+                        },
+                        beginAtZero: true
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: '曝光PV', color: '#faad14', font: { size: 12 } },
+                        grid: { drawOnChartArea: false },
+                        ticks: {
+                            color: '#faad14',
+                            font: { size: 11 },
+                            callback: function(value) {
+                                if (value >= 10000) return (value / 10000).toFixed(1) + '万';
+                                return value;
+                            }
+                        },
+                        beginAtZero: true,
+                        suggestedMax: 140000,
+                        max: 140000,
+                        offset: true
+                    }
+                }
+            }
+        });
+
+        // ===== 预览/编辑模式切换 =====
+        function togglePreview() {
+            const body = document.body;
+            const btn = document.getElementById('previewBtn');
+            const editables = document.querySelectorAll('[contenteditable]');
+            if (body.classList.contains('preview-mode')) {
+                body.classList.remove('preview-mode');
+                editables.forEach(el => el.setAttribute('contenteditable', 'true'));
+                btn.textContent = '预览模式';
+            } else {
+                body.classList.add('preview-mode');
+                editables.forEach(el => el.setAttribute('contenteditable', 'false'));
+                btn.textContent = '编辑模式';
+            }
+        }
+
+        // ===== 注释方框拖动 + 透明度调节 =====
+        (function enableBoxInteractions() {
+            const boxes = document.querySelectorAll('.annotation-box');
+            boxes.forEach(box => {
+                const handle = box.querySelector('.drag-handle');
+                const opBtn = box.querySelector('.opacity-btn');
+                const opPopup = box.querySelector('.opacity-popup');
+                const opRange = opPopup ? opPopup.querySelector('input[type="range"]') : null;
+                const opVal = opPopup ? opPopup.querySelector('.opacity-val') : null;
+
+                // ---- 拖动 ----
+                if (handle) {
+                    let dragging = false;
+                    let startX = 0, startY = 0;
+                    let startLeft = 0, startTop = 0;
+
+                    handle.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dragging = true;
+                        box.classList.add('dragging');
+
+                        const wrapper = box.parentElement;
+                        const wrapperRect = wrapper.getBoundingClientRect();
+                        const boxRect = box.getBoundingClientRect();
+                        startLeft = boxRect.left - wrapperRect.left;
+                        startTop = boxRect.top - wrapperRect.top;
+                        box.style.left = startLeft + 'px';
+                        box.style.top = startTop + 'px';
+                        box.style.right = 'auto';
+                        box.style.bottom = 'auto';
+
+                        startX = e.clientX;
+                        startY = e.clientY;
+
+                        document.addEventListener('mousemove', onMove);
+                        document.addEventListener('mouseup', onUp);
+                    });
+
+                    function onMove(e) {
+                        if (!dragging) return;
+                        const dx = e.clientX - startX;
+                        const dy = e.clientY - startY;
+                        const wrapper = box.parentElement;
+                        const wRect = wrapper.getBoundingClientRect();
+                        const bRect = box.getBoundingClientRect();
+                        let newLeft = startLeft + dx;
+                        let newTop = startTop + dy;
+                        newLeft = Math.max(0, Math.min(newLeft, wRect.width - bRect.width));
+                        newTop = Math.max(0, Math.min(newTop, wRect.height - bRect.height));
+                        box.style.left = newLeft + 'px';
+                        box.style.top = newTop + 'px';
+                    }
+
+                    function onUp() {
+                        dragging = false;
+                        box.classList.remove('dragging');
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                    }
+                }
+
+                // ---- 透明度调节 ----
+                if (opBtn && opPopup && opRange) {
+                    opBtn.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    });
+                    opBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // 关闭其它已打开的面板
+                        document.querySelectorAll('.annotation-box .opacity-popup.show').forEach(p => {
+                            if (p !== opPopup) p.classList.remove('show');
+                        });
+                        document.querySelectorAll('.annotation-box .opacity-btn.active').forEach(b => {
+                            if (b !== opBtn) b.classList.remove('active');
+                        });
+                        opPopup.classList.toggle('show');
+                        opBtn.classList.toggle('active');
+                    });
+
+                    opRange.addEventListener('input', (e) => {
+                        const v = parseInt(e.target.value, 10);
+                        const alpha = (v / 100).toFixed(2);
+                        // 只调整背景白底透明度，保留左侧 step 色边框
+                        box.style.background = `rgba(255, 255, 255, ${alpha})`;
+                        if (opVal) opVal.textContent = v + '%';
+                    });
+
+                    // 阻止 popup 内事件冒泡导致面板闪关
+                    opPopup.addEventListener('mousedown', (e) => e.stopPropagation());
+                    opPopup.addEventListener('click', (e) => e.stopPropagation());
+                }
+            });
+
+            // 点击空白处关闭所有 opacity-popup
+            document.addEventListener('click', () => {
+                document.querySelectorAll('.annotation-box .opacity-popup.show').forEach(p => p.classList.remove('show'));
+                document.querySelectorAll('.annotation-box .opacity-btn.active').forEach(b => b.classList.remove('active'));
+            });
+        })();
+    </script>
+</body>
+</html>
