@@ -210,6 +210,39 @@
         }
         body.preview-mode .edit-hint .hint-text,
         body.preview-mode .edit-hint .save-status { display: none; }
+
+        /* ===== 标注编辑器 ===== */
+        .anno-toolbar {
+            max-width: 1280px;
+            margin: 0 auto 8px auto;
+            padding: 6px 12px;
+            background: #f0f7ff;
+            border: 1px solid #d6e4ff;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .anno-toolbar .anno-label { color: #1478dc; font-weight: 500; margin-right: 4px; }
+        .anno-toolbar button {
+            background: #fff;
+            color: #1478dc;
+            border: 1px solid #91caff;
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all .15s;
+        }
+        .anno-toolbar button:hover { background: #1478dc; color: #fff; border-color: #1478dc; }
+        .anno-toolbar button.danger { color: #f5222d; border-color: #ffa39e; }
+        .anno-toolbar button.danger:hover { background: #f5222d; color: #fff; border-color: #f5222d; }
+        .anno-toolbar .anno-hint { color: #999; font-size: 11px; margin-left: auto; }
+        .anno-toolbar .anno-selected-info { color: #333; font-weight: 500; }
+        body.preview-mode .anno-toolbar { display: none; }
     </style>
 </head>
 <body>
@@ -236,6 +269,14 @@
             </div>
         </div>
 
+                <div class="anno-toolbar" id="annoToolbar">
+            <span class="anno-label">标注编辑</span>
+            <button onclick="annoEditor.addLine()">➕ 节点线</button>
+            <button onclick="annoEditor.addPhase()">➕ 阶段</button>
+            <button class="danger" onclick="annoEditor.deleteSelected()" id="annoDelBtn" style="display:none">🗑️ 删除选中</button>
+            <span class="anno-selected-info" id="annoSelInfo"></span>
+            <span class="anno-hint">点击图表上的标注选中 → 拖拽移动 / 双击修改文字</span>
+        </div>
         <div class="chart-wrapper">
             <canvas id="trendChart"></canvas>
             <div class="strategy-annotations">
@@ -331,7 +372,7 @@
         gradientRevenue.addColorStop(0, 'rgba(24, 144, 255, 0.3)');
         gradientRevenue.addColorStop(1, 'rgba(24, 144, 255, 0.02)');
 
-        new Chart(ctx, {
+        window.__chart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: dates,
@@ -646,6 +687,271 @@
             });
         })();
     
+                // ===== 标注编辑器（节点线+阶段区块 可添加/删除/拖拽）=====
+        const annoEditor = (function() {
+            const chartRef = window.__chart;
+            let selected = null;
+            let dragging = false;
+            let dragStartX = 0;
+            let dragOriginal = {};
+            const canvas = document.getElementById('trendChart');
+            const dates = chartRef.data.labels;
+
+            function getAnnotations() {
+                return chartRef.options.plugins.annotation.annotations;
+            }
+
+            function pixelToIndex(px) {
+                const scale = chartRef.scales.x;
+                const val = scale.getValueForPixel(px);
+                return Math.max(0, Math.min(Math.round(val), dates.length - 1));
+            }
+
+            function selectAnnotation(id) {
+                const annos = getAnnotations();
+                if (selected && annos[selected.id]) {
+                    const prev = annos[selected.id];
+                    if (prev._origBorderWidth !== undefined) {
+                        prev.borderWidth = prev._origBorderWidth;
+                        delete prev._origBorderWidth;
+                    }
+                    if (prev._origBorderColor !== undefined) {
+                        prev.borderColor = prev._origBorderColor;
+                        delete prev._origBorderColor;
+                    }
+                }
+                selected = id ? { id, type: annos[id].type } : null;
+                if (selected && annos[id]) {
+                    const cur = annos[id];
+                    cur._origBorderWidth = cur.borderWidth || (cur.type === 'line' ? 2.5 : 0);
+                    cur.borderWidth = cur.type === 'line' ? 5 : 2;
+                    if (cur.type === 'box') {
+                        cur._origBorderColor = cur.borderColor || 'transparent';
+                        cur.borderColor = 'rgba(20,120,220,0.6)';
+                    }
+                }
+                chartRef.update('none');
+                updateUI();
+            }
+
+            function updateUI() {
+                const delBtn = document.getElementById('annoDelBtn');
+                const info = document.getElementById('annoSelInfo');
+                if (selected) {
+                    delBtn.style.display = '';
+                    const anno = getAnnotations()[selected.id];
+                    const label = (anno.label && anno.label.content) ? anno.label.content : selected.id;
+                    info.textContent = '\u9009\u4e2d: ' + label;
+                } else {
+                    delBtn.style.display = 'none';
+                    info.textContent = '';
+                }
+            }
+
+            function findAnnotationAtPixel(x, y) {
+                const annos = getAnnotations();
+                const chartArea = chartRef.chartArea;
+                if (x < chartArea.left || x > chartArea.right || y < chartArea.top || y > chartArea.bottom) return null;
+                for (const [id, anno] of Object.entries(annos)) {
+                    if (anno.type === 'line') {
+                        const xIdx = typeof anno.xMin === 'string' ? dates.indexOf(anno.xMin) : anno.xMin;
+                        const px = chartRef.scales.x.getPixelForValue(xIdx);
+                        if (Math.abs(x - px) < 12) return { id, type: 'line', edge: null };
+                    }
+                }
+                for (const [id, anno] of Object.entries(annos)) {
+                    if (anno.type === 'box') {
+                        const leftPx = chartRef.scales.x.getPixelForValue(anno.xMin);
+                        const rightPx = chartRef.scales.x.getPixelForValue(anno.xMax);
+                        if (x >= leftPx - 8 && x <= rightPx + 8 && y >= chartArea.top && y <= chartArea.bottom) {
+                            if (Math.abs(x - leftPx) < 10) return { id, type: 'box', edge: 'left' };
+                            if (Math.abs(x - rightPx) < 10) return { id, type: 'box', edge: 'right' };
+                            return { id, type: 'box', edge: null };
+                        }
+                    }
+                }
+                return null;
+            }
+
+            canvas.addEventListener('mousedown', function(e) {
+                if (document.body.classList.contains('preview-mode')) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const hit = findAnnotationAtPixel(x, y);
+                if (hit) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectAnnotation(hit.id);
+                    selected.edge = hit.edge;
+                    dragging = true;
+                    dragStartX = x;
+                    const anno = getAnnotations()[hit.id];
+                    dragOriginal = { xMin: anno.xMin, xMax: anno.xMax };
+                    canvas.style.cursor = hit.edge ? 'col-resize' : (hit.type === 'line' ? 'ew-resize' : 'grab');
+                } else {
+                    selectAnnotation(null);
+                }
+            });
+
+            canvas.addEventListener('mousemove', function(e) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                if (dragging && selected) {
+                    const anno = getAnnotations()[selected.id];
+                    const newIdx = pixelToIndex(x);
+                    const startIdx = pixelToIndex(dragStartX);
+                    const indexShift = newIdx - startIdx;
+                    if (selected.type === 'line') {
+                        const origIdx = typeof dragOriginal.xMin === 'string' ? dates.indexOf(dragOriginal.xMin) : dragOriginal.xMin;
+                        const nIdx = Math.max(0, Math.min(origIdx + indexShift, dates.length - 1));
+                        anno.xMin = nIdx;
+                        anno.xMax = nIdx;
+                        if (anno.label && anno.label.content) {
+                            anno.label.content = anno.label.content.replace(/\d+\/\d+/, dates[nIdx] || '');
+                        }
+                    } else if (selected.type === 'box') {
+                        if (selected.edge === 'left') {
+                            anno.xMin = Math.max(0, Math.min(dragOriginal.xMin + indexShift, anno.xMax - 1));
+                        } else if (selected.edge === 'right') {
+                            anno.xMax = Math.max(anno.xMin + 1, Math.min(dragOriginal.xMax + indexShift, dates.length - 1));
+                        } else {
+                            const width = dragOriginal.xMax - dragOriginal.xMin;
+                            let newMin = dragOriginal.xMin + indexShift;
+                            newMin = Math.max(0, Math.min(newMin, dates.length - 1 - width));
+                            anno.xMin = newMin;
+                            anno.xMax = newMin + width;
+                        }
+                    }
+                    chartRef.update('none');
+                    scheduleSave();
+                } else {
+                    const hit = findAnnotationAtPixel(x, y);
+                    canvas.style.cursor = hit ? (hit.edge ? 'col-resize' : (hit.type === 'line' ? 'ew-resize' : 'grab')) : '';
+                }
+            });
+
+            canvas.addEventListener('mouseup', function() {
+                if (dragging) { dragging = false; canvas.style.cursor = ''; scheduleSave(); }
+            });
+            canvas.addEventListener('mouseleave', function() {
+                if (dragging) { dragging = false; canvas.style.cursor = ''; }
+            });
+
+            canvas.addEventListener('dblclick', function(e) {
+                if (document.body.classList.contains('preview-mode')) return;
+                const rect = canvas.getBoundingClientRect();
+                const hit = findAnnotationAtPixel(e.clientX - rect.left, e.clientY - rect.top);
+                if (hit) {
+                    const anno = getAnnotations()[hit.id];
+                    const oldLabel = (anno.label && anno.label.content) ? anno.label.content : '';
+                    const newLabel = prompt('\u4fee\u6539\u6807\u6ce8\u6587\u5b57\uff1a', oldLabel);
+                    if (newLabel !== null) {
+                        if (!anno.label) anno.label = { display: true, content: '' };
+                        anno.label.content = newLabel;
+                        anno.label.display = !!newLabel;
+                        chartRef.update('none');
+                        scheduleSave();
+                    }
+                }
+            });
+
+            const lineColors = ['#f5222d', '#1890ff', '#722ed1', '#eb2f96', '#fa8c16'];
+            const phaseColors = [
+                { bg: 'rgba(82,196,26,0.07)', text: '#52c41a' },
+                { bg: 'rgba(250,173,20,0.06)', text: '#faad14' },
+                { bg: 'rgba(245,34,45,0.05)', text: '#f5222d' },
+                { bg: 'rgba(114,46,209,0.06)', text: '#722ed1' },
+                { bg: 'rgba(24,144,255,0.06)', text: '#1890ff' },
+            ];
+            let lineCount = 1;
+            let phaseCount = Object.keys(getAnnotations()).filter(k => getAnnotations()[k].type === 'box').length;
+
+            function addLine() {
+                const midIdx = Math.floor(dates.length / 2);
+                const dateName = dates[midIdx] || '';
+                const label = prompt('\u8f93\u5165\u8282\u70b9\u7ebf\u6807\u6ce8\u6587\u5b57\uff1a', '\ud83d\udccc ' + dateName + ' \u5173\u952e\u8282\u70b9');
+                if (label === null) return;
+                const id = 'customLine_' + Date.now();
+                const color = lineColors[lineCount % lineColors.length];
+                lineCount++;
+                const annos = getAnnotations();
+                annos[id] = {
+                    type: 'line', xMin: midIdx, xMax: midIdx,
+                    borderColor: color, borderWidth: 2.5, borderDash: [6, 4],
+                    label: { display: !!label, content: label, position: 'start',
+                        backgroundColor: color + 'e6',
+                        color: '#fff', font: { size: 11, weight: 'bold' },
+                        padding: { top: 4, bottom: 4, left: 8, right: 8 },
+                        borderRadius: 3, yAdjust: 8 + lineCount * 22 }
+                };
+                chartRef.update();
+                selectAnnotation(id);
+                scheduleSave();
+            }
+
+            function addPhase() {
+                const startIdx = Math.floor(dates.length * 0.3);
+                const endIdx = Math.min(startIdx + 4, dates.length - 1);
+                const label = prompt('\u8f93\u5165\u9636\u6bb5\u6807\u6ce8\u6587\u5b57\uff1a', '\u65b0\u9636\u6bb5');
+                if (label === null) return;
+                const id = 'customPhase_' + Date.now();
+                const pc = phaseColors[phaseCount % phaseColors.length];
+                phaseCount++;
+                const annos = getAnnotations();
+                annos[id] = {
+                    type: 'box', xMin: startIdx, xMax: endIdx,
+                    backgroundColor: pc.bg, borderWidth: 0, borderColor: 'transparent',
+                    label: { display: true, content: label,
+                        position: { x: 'center', y: 'end' },
+                        backgroundColor: 'rgba(255,255,255,0)',
+                        color: pc.text, font: { size: 10, weight: 'bold' }, yAdjust: -5 }
+                };
+                chartRef.update();
+                selectAnnotation(id);
+                scheduleSave();
+            }
+
+            function deleteSelected() {
+                if (!selected) return;
+                const anno = getAnnotations()[selected.id];
+                const label = (anno.label && anno.label.content) ? anno.label.content : selected.id;
+                if (!confirm('\u786e\u5b9a\u5220\u9664\u6807\u6ce8\u300c' + label + '\u300d\uff1f')) return;
+                delete getAnnotations()[selected.id];
+                selected = null;
+                chartRef.update();
+                updateUI();
+                scheduleSave();
+            }
+
+            function serializeAnnotations() {
+                const annos = getAnnotations();
+                const result = {};
+                for (const [id, anno] of Object.entries(annos)) {
+                    const clean = {};
+                    for (const [k, v] of Object.entries(anno)) {
+                        if (k.startsWith('_')) continue;
+                        if (typeof v === 'function') continue;
+                        clean[k] = v;
+                    }
+                    result[id] = JSON.parse(JSON.stringify(clean));
+                }
+                return result;
+            }
+
+            function restoreAnnotations(saved) {
+                if (!saved || typeof saved !== 'object') return;
+                const annos = getAnnotations();
+                for (const k of Object.keys(annos)) delete annos[k];
+                for (const [id, anno] of Object.entries(saved)) annos[id] = anno;
+                chartRef.update('none');
+            }
+
+            return { addLine, addPhase, deleteSelected, selectAnnotation, serializeAnnotations, restoreAnnotations };
+        })();
+
+
         // ===== 自动保存（localStorage）=====
         const STORAGE_KEY = 'hatch-trend-edits::' + location.pathname;
         let saveTimer = null;
@@ -676,6 +982,7 @@
                 };
             });
             state.removed = window.__removedBoxIds || [];
+            state.annotations = annoEditor.serializeAnnotations();
             return state;
         }
 
@@ -720,6 +1027,9 @@
                     if (s.bottom)     box.style.bottom = s.bottom;
                     if (s.background) box.style.background = s.background;
                 }
+            }
+            if (state.annotations) {
+                annoEditor.restoreAnnotations(state.annotations);
             }
             if (Array.isArray(state.removed) && state.removed.length) {
                 window.__removedBoxIds = state.removed.slice();
